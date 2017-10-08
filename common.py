@@ -1,62 +1,177 @@
 import arrow
 import sqlite3
 import asyncio
+import requests
+import re
+import wikipedia
+import api
 
 conn = sqlite3.connect('time_bot.db')
 db = conn.cursor()
 
 syntax_message = 'Invalid timezone syntax ): Timezones normally look like this: US/Central. If you don\'t know what is your timezone, you can just go to here: https://alisww.github.io/guesser.html'
+usage_message = """
+AlisBot, by Alis (https://github.com/alisww)
+User data:
+!register <timezone> # works for updating your timezone too!
+!time <user>
+!time <timezone>
+!register_pronouns <pronouns>
+!pronouns <user>
+-------------------
+Look-ups:
+!ud <word>
+!urbandictionary <word> # same as !ud
+!wikipedia <page title>
+!pronounis <pronouns>
+-------------------
+Tool to guess your timezone automatically: https://alisww.github.io/guesser.html
+Special channel: #alisbotchannel
+Admin commands: !admin_usage"""
+
+admin_usage = """
+Admin only commands:
+!add_trusted <user> # Adds user to the trusted permission level (allows them to use !ud)
+!remove_trusted <user> # Removes user from trusted permission level
+!add_admin <user> # Adds user to admin permission level (can add and remove trusted users)
+Note: To remove an Admin, the bot creator Alis(sometimes Alis2) should be contacted."""
+
+wikipedia_regex = re.compile('(?:https:|)\/\/(?:(\w{2})\.|)wikipedia.org\/wiki\/(.+)')
 
 def get_hour(timezone):
     try:
-        time = arrow.now(timezone).format('HH:mm')
+        arrow.now(timezone).format('HH:mm')
         return time
     except:
         return None
 
+async def registered_user(user):
+    db.execute('INSERT INTO known_users VALUES (?)',(user,))
+    conn.commit()
+
 async def match_command(message,target,from_whom,client):
     try:
-        message_split = message.split(' ')
-        if message_split[0] is not None:
-            if message_split[0] == '!time':
-                try_hour = get_hour(message_split[1])
-                if try_hour is not None:
-                    await client.say(target,'It\'s {} at {}'.format(try_hour,message_split[0]))
-                else:
-                    user = ""
-                    if message_split[1] is not None:
-                        user = message_split[1]
-                    else:
-                        user = from_whom
+        wiki_match = wikipedia_regex.match(message)
+        print(wiki_match)
+        if wiki_match is not None:
+            await api.wikipedia(target,client,wiki_match.group(2),lang=wiki_match.group(1))
 
-                    row = db.execute('SELECT * FROM users WHERE user = ?',(user,)).fetchone()
-                    if row is not None:
-                        time = get_hour(row[1])
-                        if time is not None:
-                            await client.say(target,'It\'s {} at {}\'s timezone, {}'.format(time,user,row[1]))
+        else:
+            message_split = message.split(' ')
+            print(message_split)
+            if message_split[0] is not None:
+                if message_split[0] == '!time':
+                    try_hour = get_hour(message_split[1])
+                    if try_hour is not None:
+                        await client.say(target,'It\'s {} at {}'.format(try_hour,message_split[0]))
+                    else:
+                        user = ""
+                        if message_split[1] is not None:
+                            user = message_split[1]
                         else:
-                            await client.say(target,'This user has registered an invalid timezone ):')
-                    else:
-                        await client.say(target,'This user couldn\'t be found on my database ):')
+                            user = from_whom
 
-            elif message_split[0] == '!register':
-                if get_hour(message_split[1]) is not None:
+                        row = db.execute('SELECT (timezone) FROM users WHERE user = ?',(user,)).fetchone()
+                        if row is not None:
+                            time = get_hour(row[0])
+                            if time is not None:
+                                await client.say(target,'It\'s {} at {}\'s timezone, {}'.format(time,user,row[0]))
+                            else:
+                                await client.say(target,'This user has registered an invalid timezone ):')
+                        else:
+                            await client.say(target,'This user couldn\'t be found on my database ):')
+
+                elif message_split[0] == '!register':
+                    if get_hour(message_split[1]) is not None:
+                        if db.execute('SELECT * FROM users WHERE user = ?',(from_whom,)).fetchone() is not None:
+                            db.execute('UPDATE users SET timezone = ? WHERE user = ?',(message_split[1],from_whom,))
+                            await client.say(target,'Updated your timezone (:')
+                        else:
+                            db.execute('INSERT INTO users VALUES (?,?)',(from_whom,message_split[1],))
+                            db.execute('INSERT INTO known_users VALUES (?)',(from_whom,))
+                            await client.say(target,'Registered new timezone (:')
+                        conn.commit()
+                    else:
+                        await client.say(target,syntax_message)
+
+                elif message_split[0] == '!alis_help' or message_split[0] == '!usage':
+                    await client.say(target,usage_message)
+
+                elif message_split[0] == '!ud' or message_split[0] == '!urbandictionary' and message_split[1] is not None:
+                    if db.execute('SELECT * FROM known_users WHERE user = ?',(from_whom,)).fetchone() is not None:
+                        await api.urban_dictionary(target,client,' '.join(message_split[1:]))
+                    else:
+                        await client.say(target,'You don\'t have permission to use this command!')
+
+                elif message_split[0] == '!add_trusted' and message_split[1] is not None:
+                    if db.execute('SELECT * FROM known_users WHERE user = ?',(message_split[1],)).fetchone() is None:
+                        if db.execute('SELECT * FROM admins WHERE user = ?',(from_whom,)).fetchone() is not None:
+                            db.execute('INSERT INTO known_users VALUES (?)',(message_split[1],))
+                            conn.commit()
+                            await client.say(target,'Added user to trusted user list!')
+                        else:
+                            await client.say(target,'You don\'t have permission to use this command!')
+                    else:
+                        await client.say(target,'User is already trusted!')
+
+                elif message_split[0] == '!remove_trusted' and message_split[1] is not None:
+                    if db.execute('SELECT * FROM known_users WHERE user = ?',(message_split[1],)).fetchone() is not None:
+                        if db.execute('SELECT * FROM admins WHERE user = ?',(from_whom,)).fetchone() is not None:
+                            db.execute('DELETE FROM known_users WHERE user = ?',(message_split[1],))
+                            conn.commit()
+                            await client.say(target,'Removed user from trusted users list!')
+                        else:
+                            await client.say(target,'You don\'t have permission to use this command!')
+                    else:
+                        await client.say(target,'User is not trusted already!')
+
+
+                elif message_split[0] == '!add_admin' and message_split[1] is not None:
+                    if db.execute('SELECT * FROM admins WHERE user = ?',(message_split[1],)).fetchone() is None:
+                        if db.execute('SELECT * FROM admins WHERE user = ?',(from_whom,)).fetchone() is not None:
+                            db.execute('INSERT INTO admins VALUES (?)',(message_split[1],))
+                            if db.execute('SELECT * FROM known_users WHERE user = ?',(message_split[1],)).fetchone() is None:
+                                db.execute('INSERT INTO known_users VALUES (?)',(message_split[1],))
+                            conn.commit()
+                            await client.say(target,'Added user to admin list!')
+                        else:
+                            await client.say(target,'You don\'t have permission to use this command!')
+                    else:
+                        await client.say(target,'User is already an admin!')
+
+                elif message_split[0] == '!admin_usage':
+                    if db.execute('SELECT * FROM admins WHERE user = ?',(from_whom,)).fetchone() is not None:
+                        await client.say(target,admin_usage)
+                    else:
+                        await client.say(target,'You don\'t have permission to use this command!')
+
+                elif message_split[0] == '!wikipedia' and message_split[1] is not None:
+                    if db.execute('SELECT * FROM known_users WHERE user = ?',(from_whom,)).fetchone() is not None:
+                        query = ' '.join(message_split[1:])
+                        await api.wikipedia(target,client,query)
+                    else:
+                        await client.say(target,'You don\'t have permission to use this command!')
+
+                elif message_split[0] == '!pronoun.is' or message_split[0] == '!pronounis' :
+                    await api.pronounis(target,client,message_split[1])
+
+                elif message_split[0] == '!pronouns' and message_split[1] is not None:
+                    user = db.execute('SELECT (pronouns) FROM users WHERE user = ?',(message_split[1],)).fetchone()
+                    if user[0] is not None:
+                        await client.say(target,'{}\'s pronouns are {}.'.format(message_split[1],user[0]))
+                    else:
+                        await client.say(target,'{}\'s pronouns are not registered in my database ): If you didn\'t type a non-existant nickname, you should ask the person what pronouns they prefer and use "they/them/theirs/themselves" in the meantime')
+
+                elif message_split[0] == '!register_pronouns':
                     if db.execute('SELECT * FROM users WHERE user = ?',(from_whom,)).fetchone() is not None:
-                        db.execute('UPDATE users SET timezone = ? WHERE user = ?',(message_split[1],from_whom,))
+                        db.execute('UPDATE users SET pronouns = ? WHERE user = ?',(message_split[1],from_whom,))
+                        await client.say(target,'Updated your pronouns (:')
                     else:
-                        db.execute('INSERT INTO users VALUES (?,?)',(from_whom,message_split[1],))
+                        db.execute('INSERT INTO users (user,pronouns) VALUES (?,?)',(from_whom,message_split[1],))
+                        db.execute('INSERT INTO known_users VALUES (?)',(from_whom,))
+                        await client.say(target,'Registered new pronouns (:')
                     conn.commit()
-                else:
-                    await client.say(target,syntax_message)
 
-            elif message_split[0] == '!alis_help' or message_split[0] == '!usage':
-                await client.say(target,"AlisBot, by Alis(https://github.com/alisww)")
-                await client.say(target,"Usage:")
-                await client.say(target,"!register <timezone> (this works for updating your timezone too!)")
-                await client.say(target,"!time <user>")
-                await client.say(target,"!time <timezone>")
-                await client.say(target,"-------------------")
-                await client.say(target,"Tool to guess your timezone automatically: https://alisww.github.io/guesser.html")
     except:
         pass
 

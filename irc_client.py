@@ -2,6 +2,10 @@ import socket
 import sched,time
 import common
 import asyncio
+import re
+import sys
+
+registered_regex = re.compile("Information on (.*) \(account .*\):")
 
 class IRCClient(common.CommonClient):
 
@@ -15,8 +19,14 @@ class IRCClient(common.CommonClient):
         print(self.irc)
         print("Connected.")
 
-        for channel in channels:
-            self.join_channel(channel)
+        self.channels = channels
+        self.server = server
+
+        s = sched.scheduler(time.time,time.sleep)
+        for (idx,channel) in enumerate(channels):
+            s.enter(10 + idx,1,self.join_channel,argument=(channel,))
+
+        s.run()
 
     def join_channel(self,channel):
         self.irc.send(bytes('JOIN {} \n'.format(channel),'UTF-8'))
@@ -25,25 +35,42 @@ class IRCClient(common.CommonClient):
         self.irc.send(bytes('PONG :pingis \n','UTF-8'))
 
     async def say(self,target,content):
-        self.irc.send(bytes('PRIVMSG {} :{} \n'.format(target,content),'UTF-8'))
+        for message in content.split('\n'):
+            self.irc.send(bytes('PRIVMSG {} :{} \n'.format(target,message),'UTF-8'))
+
+    async def registered(self,target,content):
+        match = registered_regex.match(content).group(1)
+        if match is not None:
+            await common.registered_user(match)
+
+    async def query_nickserv(self,user):
+        self.irc.send(bytes('PRIVMSG NICKSERV :INFO {}'.format(user),'UTF-8'))
 
     async def run(self):
         message = self.irc.recv(2048).decode('UTF-8').strip('\n\r')
-        if message.find('PRIVMSG') != -1:
-            name = message.split('!',1)[0][1:]
-            content = message.split(':')[-1]
-            target = message.split('PRIVMSG',1)[1].split(':',1)[0]
-            await common.match_command(content,target,name,self)
-        elif message.find('PING :') != -1:
-            self.ping()
+        if message:
+            sys.stdout.buffer.write(message.encode('utf-8'))
+            if message.find('PRIVMSG') != -1:
+                name = message.split('!',1)[0][1:]
+                content = message.split(':')[-1]
+                target = message.split('PRIVMSG',1)[1].split(':',1)[0]
+
+                if name == "NickServ":
+                    await self.registered(target,content,name)
+                else:
+                    await common.match_command(content,target,name,self)
+            elif message.find('PING :') != -1:
+                self.ping()
+
+            elif message.find('JOIN') != -1:
+                name = message.split('!',1)[0][1:]
+                self.query_nickserv(name)
+
+        else:
+            self.connect(self.server,self.channels)
 
 client = IRCClient()
-client.connect('irc.blitzed.org',['#yayforqueers'])
-
-s = sched.scheduler(time.time,time.sleep)
-s.enter(10,1,client.join_channel,argument=("#yayforqueers",))
-s.enter(11,1,client.join_channel,argument=("#queerscouts",))
-s.run()
+client.connect('irc.blitzed.org',[])
 
 loop = asyncio.get_event_loop()
 while True:

@@ -105,5 +105,6 @@ venv.bak/
 .mypy_cache/
 
 *.db
+alis_watcher.py
 
 # End of https://www.gitignore.io/api/python
