@@ -49,14 +49,15 @@ class IRCClient(common.CommonClient):
     async def run(self):
         message = self.irc.recv(2048).decode('UTF-8').strip('\n\r')
         if message:
-            sys.stdout.buffer.write(message.encode('utf-8'))
+        #    sys.stdout.buffer.write(message.encode('utf-8'))
             if message.find('PRIVMSG') != -1:
                 name = message.split('!',1)[0][1:]
                 content = message.split(':')[-1]
                 target = message.split('PRIVMSG',1)[1].split(':',1)[0]
 
                 if name == "NickServ":
-                    await self.registered(target,content,name)
+                    #await self.registered(target,content,name)
+                    pass
                 else:
                     await common.match_command(content,target,name,self)
             elif message.find('PING :') != -1:
@@ -64,13 +65,13 @@ class IRCClient(common.CommonClient):
 
             elif message.find('JOIN') != -1:
                 name = message.split('!',1)[0][1:]
-                self.query_nickserv(name)
+                #await self.query_nickserv(name)
 
         else:
             self.connect(self.server,self.channels)
 
 client = IRCClient()
-client.connect('irc.blitzed.org',[])
+client.connect('irc.blitzed.org',['#yayforqueers','#queerscouts','#alisbotchannel'])
 
 loop = asyncio.get_event_loop()
 while True:

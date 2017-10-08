@@ -5,12 +5,13 @@ import requests
 import re
 import wikipedia
 import api
+import time
 
 conn = sqlite3.connect('time_bot.db')
 db = conn.cursor()
 
 syntax_message = 'Invalid timezone syntax ): Timezones normally look like this: US/Central. If you don\'t know what is your timezone, you can just go to here: https://alisww.github.io/guesser.html'
-usage_message = """
+usage_message_1 = """
 AlisBot, by Alis (https://github.com/alisww)
 User data:
 !register <timezone> # works for updating your timezone too!
@@ -18,12 +19,15 @@ User data:
 !time <timezone>
 !register_pronouns <pronouns>
 !pronouns <user>
--------------------
+-------------------"""
+usage_message_2 = """
 Look-ups:
 !ud <word>
 !urbandictionary <word> # same as !ud
 !wikipedia <page title>
 !pronounis <pronouns>
+!custom_pronouns <subject> <object> <possesive determiner> <possesive pronoun> <reflexive>"""
+usage_message_3 = """
 -------------------
 Tool to guess your timezone automatically: https://alisww.github.io/guesser.html
 Special channel: #alisbotchannel
@@ -95,7 +99,11 @@ async def match_command(message,target,from_whom,client):
                         await client.say(target,syntax_message)
 
                 elif message_split[0] == '!alis_help' or message_split[0] == '!usage':
-                    await client.say(target,usage_message)
+                    await client.say(target,usage_message_1)
+                    time.sleep(2)
+                    await client.say(target,usage_message_2)
+                    time.sleep(2)
+                    await client.say(target,usage_message_3)
 
                 elif message_split[0] == '!ud' or message_split[0] == '!urbandictionary' and message_split[1] is not None:
                     if db.execute('SELECT * FROM known_users WHERE user = ?',(from_whom,)).fetchone() is not None:
@@ -152,8 +160,47 @@ async def match_command(message,target,from_whom,client):
                     else:
                         await client.say(target,'You don\'t have permission to use this command!')
 
-                elif message_split[0] == '!pronoun.is' or message_split[0] == '!pronounis' :
-                    await api.pronounis(target,client,message_split[1])
+                elif message_split[0] == '!pronoun.is' or message_split[0] == '!pronounis':
+                    def examples(pronouns):
+                        return [
+                        '{} drank a cup of tea'.format(pronouns[0].title()),
+                        'I hugged {}'.format(pronouns[1]),
+                        '{} brought {} tea'.format(pronouns[0].title(),pronouns[2]),
+                        'I think that tea was {}'.format(pronouns[3]),
+                        '{} asked {}'.format(pronouns[0].title(),pronouns[4])
+                        ]
+
+                    if db.execute('SELECT * FROM known_users WHERE user = ?',(from_whom,)).fetchone() is not None:
+                        user = db.execute('SELECT (pronouns) FROM users WHERE user = ?',(message_split[1],)).fetchone()
+                        if user is not None:
+                            print("normal")
+                            pronouns_split = user[0].split('/')
+                            pronouns = db.execute('SELECT * from pronouns WHERE subject = ? AND object = ?',(pronouns_split[0],pronouns_split[1],)).fetchone()
+                            if pronouns[0] is not None:
+                                await client.say(target,'How to use {}\'s pronouns, {}:'.format(message_split[1],user[0]))
+                                for example in examples(pronouns):
+                                    await client.say(target,example)
+                            else:
+                                await client.say(target,'Couldn\'t find {}\'s pronouns, {} in my pronoun database ): Maybe add it with !custom_pronouns?'.format(message_split[1],user[0]))
+                        else:
+                            print('Message split[1]:')
+                            print(message_split[1])
+                            pronouns_split = message_split[1].split('/')
+                            print(pronouns_split)
+                            pronouns = db.execute('SELECT * from pronouns WHERE subject = ? AND object = ?',(pronouns_split[0],pronouns_split[1],)).fetchone()
+                            if pronouns[0] is not None:
+                                await client.say(target,'How to use pronouns, {}:'.format(message_split[1]))
+                                for example in examples(pronouns):
+                                    await client.say(target,example)
+                            else:
+                                await client.say(target,'Couldn\'t find {} in my pronoun database ): Maybe add it with !custom_pronouns?'.format(message_split[1]))
+                    else:
+                        await client.say(target,'You don\'t have permission to use this command!')
+
+                elif message_split[0] == '!custom_pronouns' and message_split[5] is not None:
+                    db.execute('INSERT INTO pronouns VALUES (?,?,?,?,?)',(message_split[1],message_split[2],message_split[3],message_split[4],message_split[5]))
+                    conn.commit()
+                    await client.say(target,'Added new custom pronouns!')
 
                 elif message_split[0] == '!pronouns' and message_split[1] is not None:
                     user = db.execute('SELECT (pronouns) FROM users WHERE user = ?',(message_split[1],)).fetchone()

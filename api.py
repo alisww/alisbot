@@ -1,6 +1,5 @@
 import requests
 import wikipedia
-from bs4 import BeautifulSoup
 import asyncio
 
 async def urban_dictionary(target,client,query):
@@ -33,13 +32,3 @@ async def wikipedia(target,client,query,lang='en'):
         await client.say(target,'Found more than one option: {}'.format(','.join(e.options)))
     except wikipedia.exceptions.PageError as e:
         await client.say(target,'Couldn\'t find page {} ):'.format(query))
-
-async def pronounis(target,client,pronouns):
-    r = requests.get('http://pronoun.is/{}'.format(pronouns))
-    soup = BeautifulSoup(r.text)
-    examples = soup.find_all(class_="sentence")
-    print(examples)
-    if len(examples) > 0:
-        await client.say(target,'How to use the pronouns {}:'.format(pronouns))
-        for example in examples:
-            await client.say(target,example.text)
