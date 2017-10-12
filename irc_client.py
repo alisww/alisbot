@@ -49,7 +49,7 @@ class IRCClient(common.CommonClient):
     async def run(self):
         message = self.irc.recv(2048).decode('UTF-8').strip('\n\r')
         if message:
-        #    sys.stdout.buffer.write(message.encode('utf-8'))
+            sys.stdout.buffer.write(message.encode('utf-8'))
             if message.find('PRIVMSG') != -1:
                 name = message.split('!',1)[0][1:]
                 content = message.split(':')[-1]
@@ -71,9 +71,11 @@ class IRCClient(common.CommonClient):
             self.connect(self.server,self.channels)
 
 client = IRCClient()
-client.connect('irc.blitzed.org',['#yayforqueers','#queerscouts','#alisbotchannel'])
+client.connect('irc.blitzed.org',[])
+
 
 loop = asyncio.get_event_loop()
+loop.run_until_complete(client.say('NickServ','identify '))
 while True:
     loop.run_until_complete(client.run())
 

@@ -3,9 +3,7 @@ import sqlite3
 import asyncio
 import requests
 import re
-import wikipedia
 import api
-import time
 
 conn = sqlite3.connect('time_bot.db')
 db = conn.cursor()
@@ -13,22 +11,8 @@ db = conn.cursor()
 syntax_message = 'Invalid timezone syntax ): Timezones normally look like this: US/Central. If you don\'t know what is your timezone, you can just go to here: https://alisww.github.io/guesser.html'
 usage_message_1 = """
 AlisBot, by Alis (https://github.com/alisww)
-User data:
-!register <timezone> # works for updating your timezone too!
-!time <user>
-!time <timezone>
-!register_pronouns <pronouns>
-!pronouns <user>
--------------------"""
-usage_message_2 = """
-Look-ups:
-!ud <word>
-!urbandictionary <word> # same as !ud
-!wikipedia <page title>
-!pronounis <pronouns>
-!custom_pronouns <subject> <object> <possesive determiner> <possesive pronoun> <reflexive>"""
-usage_message_3 = """
--------------------
+User data: !register <timezone> # works for updating your timezone too! | !time <user> | !time <timezone> | !register_pronouns <pronouns> | !pronouns <user>
+Look-ups: !ud <word> | !urbandictionary <word> # same as !ud | !wikipedia <page title> !pronounis <pronouns> !custom_pronouns <subject> <object> <possesive determiner> <possesive pronoun> <reflexive>
 Tool to guess your timezone automatically: https://alisww.github.io/guesser.html
 Special channel: #alisbotchannel
 Admin commands: !admin_usage"""
@@ -40,12 +24,12 @@ Admin only commands:
 !add_admin <user> # Adds user to admin permission level (can add and remove trusted users)
 Note: To remove an Admin, the bot creator Alis(sometimes Alis2) should be contacted."""
 
-wikipedia_regex = re.compile('(?:https:|)\/\/(?:(\w{2})\.|)wikipedia.org\/wiki\/(.+)')
+wikipedia_regex = re.compile('(?:https:|)\/\/(?:\w{2}\.|)(?:m\.|)wikipedia\.org(?:\/wiki|)\/([^\?\n]+)')
 
 def get_hour(timezone):
     try:
-        arrow.now(timezone).format('HH:mm')
-        return time
+        time_ =  arrow.now(timezone).format('HH:mm')
+        return time_
     except:
         return None
 
@@ -58,7 +42,8 @@ async def match_command(message,target,from_whom,client):
         wiki_match = wikipedia_regex.match(message)
         print(wiki_match)
         if wiki_match is not None:
-            await api.wikipedia(target,client,wiki_match.group(2),lang=wiki_match.group(1))
+            print('wiki!')
+            await api.wikipedia(target,client,wiki_match.group(1))
 
         else:
             message_split = message.split(' ')
@@ -77,9 +62,9 @@ async def match_command(message,target,from_whom,client):
 
                         row = db.execute('SELECT (timezone) FROM users WHERE user = ?',(user,)).fetchone()
                         if row is not None:
-                            time = get_hour(row[0])
-                            if time is not None:
-                                await client.say(target,'It\'s {} at {}\'s timezone, {}'.format(time,user,row[0]))
+                            time_ = get_hour(row[0])
+                            if time_ is not None:
+                                await client.say(target,'It\'s {} at {}\'s timezone, {}'.format(time_,user,row[0]))
                             else:
                                 await client.say(target,'This user has registered an invalid timezone ):')
                         else:
@@ -155,12 +140,15 @@ async def match_command(message,target,from_whom,client):
 
                 elif message_split[0] == '!wikipedia' and message_split[1] is not None:
                     if db.execute('SELECT * FROM known_users WHERE user = ?',(from_whom,)).fetchone() is not None:
+                        print('oi')
                         query = ' '.join(message_split[1:])
+                        print(query)
                         await api.wikipedia(target,client,query)
                     else:
                         await client.say(target,'You don\'t have permission to use this command!')
 
                 elif message_split[0] == '!pronoun.is' or message_split[0] == '!pronounis':
+                    print('pls?')
                     def examples(pronouns):
                         return [
                         '{} drank a cup of tea'.format(pronouns[0].title()),
